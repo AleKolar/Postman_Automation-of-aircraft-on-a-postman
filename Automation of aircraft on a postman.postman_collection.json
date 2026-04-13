@@ -1,0 +1,274 @@
+{
+	"info": {
+		"_postman_id": "a89fb089-a38a-4c58-ae01-c025ebf0cc40",
+		"name": "Automation of aircraft on a postman",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Автоматизированная проверка создания и получения сущности Aircraft",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "f8e404ae-7e7d-43d3-966e-a7c78ae8c60e",
+						"exec": [
+							"// =====================================================\r",
+							"// Pre-request Script: создание самолёта через POST\r",
+							"// =====================================================\r",
+							"\r",
+							"// 0. Очистка старых значений из окружения перед генерацией новых\r",
+							"pm.environment.unset(\"manufacturer\");\r",
+							"pm.environment.unset(\"model\");\r",
+							"pm.environment.unset(\"numberOfSeats\");\r",
+							"pm.environment.unset(\"aircraftId\");\r",
+							"\r",
+							"// 1. Генерация случайных данных (расширен диапазон numberOfSeats до 1000)\r",
+							"const randomManufacturer = \"ATest_\" + Math.random().toString(36).substring(2, 10);\r",
+							"const randomModel = \"Atest-\" + Math.floor(Math.random() * 900 + 100);\r",
+							"const randomSeats = Math.floor(Math.random() * 1000) + 1;   // 1–1000 как в Swagger\r",
+							"\r",
+							"// 2. Сохраняем в переменные окружения\r",
+							"pm.environment.set(\"manufacturer\", randomManufacturer);\r",
+							"pm.environment.set(\"model\", randomModel);\r",
+							"pm.environment.set(\"numberOfSeats\", randomSeats);\r",
+							"\r",
+							"// 3. Basic Auth (учётные данные john / john123)\r",
+							"const credentials = btoa(\"john:john123\");\r",
+							"\r",
+							"// 4. Конфигурация POST-запроса\r",
+							"const postRequest = {\r",
+							"    url: pm.variables.replaceIn(\"{{baseUrl}}/api/v0/aircrafts\"),\r",
+							"    method: \"POST\",\r",
+							"    header: {\r",
+							"        \"Content-Type\": \"application/json\",\r",
+							"        \"Authorization\": \"Basic \" + credentials\r",
+							"    },\r",
+							"    body: {\r",
+							"        mode: \"raw\",\r",
+							"        raw: JSON.stringify({\r",
+							"            manufacturer: randomManufacturer,\r",
+							"            model: randomModel,\r",
+							"            numberOfSeats: randomSeats\r",
+							"        })\r",
+							"    }\r",
+							"};\r",
+							"\r",
+							"// 5. Отправка POST\r",
+							"pm.sendRequest(postRequest, function (err, res) {\r",
+							"    if (err) {\r",
+							"        console.error(\"❌ POST failed:\", err);\r",
+							"        pm.environment.set(\"postError\", err.message);\r",
+							"        return;\r",
+							"    }\r",
+							"    console.log(\"📡 POST status:\", res.code);\r",
+							"    if (res.code === 201) {\r",
+							"        const response = res.json();\r",
+							"        pm.environment.set(\"aircraftId\", response.aircraftId);\r",
+							"        console.log(\"✈️ Created aircraft ID:\", response.aircraftId);\r",
+							"    }\r",
+							"});\r",
+							""
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"id": "c3e00cff-9dd8-409f-9104-2369e8a1e9a8",
+						"exec": [
+							"// =====================================================\r",
+							"// Tests for GET /api/v0/aircrafts/{id}\r",
+							"// =====================================================\r",
+							"\r",
+							"// 1. Проверка статуса 200 OK\r",
+							"pm.test(\"GET status is 200\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// 2. Проверка, что ответ является валидным JSON\r",
+							"let response;\r",
+							"try {\r",
+							"    response = pm.response.json();\r",
+							"} catch (e) {\r",
+							"    pm.test(\"Response is valid JSON\", function () {\r",
+							"        throw new Error(\"Response is not JSON or empty\");\r",
+							"    });\r",
+							"    return;\r",
+							"}\r",
+							"\r",
+							"// 3. Проверка схемы AircraftDto\r",
+							"pm.test(\"Response matches AircraftDto schema\", function () {\r",
+							"    pm.expect(response).to.have.property(\"aircraftId\").that.is.a(\"number\");\r",
+							"    pm.expect(response).to.have.property(\"manufacturer\").that.is.a(\"string\");\r",
+							"    pm.expect(response).to.have.property(\"model\").that.is.a(\"string\");\r",
+							"    pm.expect(response).to.have.property(\"numberOfSeats\").that.is.a(\"number\");\r",
+							"    pm.expect(response).to.have.property(\"id\").that.is.a(\"number\");\r",
+							"    pm.expect(response).to.have.property(\"flightIds\").that.is.an(\"array\");\r",
+							"});\r",
+							"\r",
+							"// 4. Проверка ограничений\r",
+							"pm.test(\"numberOfSeats is within [1, 1000]\", function () {\r",
+							"    pm.expect(response.numberOfSeats).to.be.at.least(1).and.at.most(1000);\r",
+							"});\r",
+							"\r",
+							"pm.test(\"manufacturer length <= 300 (Swagger contract)\", function () {\r",
+							"    const length = response.manufacturer.length;\r",
+							"    pm.expect(length).to.be.at.most(300);\r",
+							"    if (length > 300) {\r",
+							"        console.warn(\"⚠️ Known issue: manufacturer length >300 allowed by API but DB restricts to 255. Bug: #77 (Taiga) - Contract violation\");\r",
+							"    }\r",
+							"});\r",
+							"\r",
+							"pm.test(\"model length <= 300 (Swagger contract)\", function () {\r",
+							"    const length = response.model.length;\r",
+							"    pm.expect(length).to.be.at.most(300);\r",
+							"    if (length > 300) {\r",
+							"        console.warn(\"⚠️ Known issue: model length >300 allowed by API but DB restricts to 255. Bug: #77 (Taiga) - Contract violation\");\r",
+							"    }\r",
+							"});\r",
+							"\r",
+							"// 5. Проверка, что данные совпадают с отправленными в POST\r",
+							"pm.test(\"GET data matches POST data\", function () {\r",
+							"    const expectedMan = pm.environment.get(\"manufacturer\");\r",
+							"    const expectedModel = pm.environment.get(\"model\");\r",
+							"    const expectedSeats = Number(pm.environment.get(\"numberOfSeats\"));\r",
+							"\r",
+							"    pm.expect(response.manufacturer).to.eql(expectedMan);\r",
+							"    pm.expect(response.model).to.eql(expectedModel);\r",
+							"    pm.expect(response.numberOfSeats).to.eql(expectedSeats);\r",
+							"});\r",
+							"\r",
+							"// 6. Проверка, что aircraftId из ответа совпадает с сохранённым после POST\r",
+							"pm.test(\"GET aircraftId matches saved ID\", function () {\r",
+							"    const savedId = Number(pm.environment.get(\"aircraftId\"));\r",
+							"    pm.expect(response.aircraftId).to.eql(savedId);\r",
+							"});\r",
+							"\r",
+							"// 7. Проверка, что flightIds является массивом\r",
+							"pm.test(\"flightIds is an array\", function () {\r",
+							"    pm.expect(response.flightIds).to.be.an(\"array\");\r",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "\r\n\r\n"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v0/aircrafts/{{aircraftId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v0",
+						"aircrafts",
+						"{{aircraftId}}"
+					]
+				},
+				"description": "Автоматизированное создание сущности aircraft с рандомными данными при вызове метода GET"
+			},
+			"response": []
+		},
+		{
+			"name": "Позитивный сценарий создания самолета (Happy Path)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"manufacturer\": \"A_Positive_test_1\",\r\n  \"model\": \"A_Positive_test_model_1\",\r\n  \"numberOfSeats\": 125\r\n}\r\n"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/v0/aircrafts",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"v0",
+						"aircrafts"
+					]
+				},
+				"description": "🧪 Пример позитивного теста (Happy Path)"
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "basic",
+		"basic": [
+			{
+				"key": "password",
+				"value": "john123",
+				"type": "string"
+			},
+			{
+				"key": "username",
+				"value": "john",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "a3f1bc69-85c4-433b-a6cf-64fd74cb22d0",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "1c707171-ae8d-4ab2-a0db-584a6d6c475d",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"id": "de632fd1-59d6-49c1-9332-e61fc4a97c89",
+			"key": "basicUsername",
+			"value": "john"
+		},
+		{
+			"id": "a2d948a7-ff7f-4f17-87c3-f1b160195dc4",
+			"key": "basicPassword",
+			"value": "john123"
+		}
+	],
+	"protocolProfileBehavior": {}
+}
